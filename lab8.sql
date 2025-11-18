@@ -1,154 +1,63 @@
 -- Moldabayev Alikhan
 -- lab 8: INDEXES in PostgreSQL
 
-----------------------------------------
--- Part 1: Создание таблиц и вставка тестовых данных
-----------------------------------------
--- Создаю таблицы (если их нет)
+
+-- 1) Создаём таблицы, если их нет
 CREATE TABLE IF NOT EXISTS departments (
-    dept_id INT PRIMARY KEY,
-    dept_name VARCHAR(50),
-    location VARCHAR(50)
+                                           dept_id INT PRIMARY KEY,
+                                           dept_name VARCHAR(50),
+                                           location VARCHAR(50)
 );
 
 CREATE TABLE IF NOT EXISTS employees (
-    emp_id INT PRIMARY KEY,
-    emp_name VARCHAR(100),
-    dept_id INT,
-    salary DECIMAL(10,2),
-    FOREIGN KEY (dept_id) REFERENCES departments(dept_id)
+                                         emp_id INT PRIMARY KEY,
+                                         emp_name VARCHAR(100),
+                                         dept_id INT,
+                                         salary NUMERIC(12,2),
+    -- email, phone, hire_date будут добавлены через ALTER TABLE IF NOT EXISTS ниже
+                                         FOREIGN KEY (dept_id) REFERENCES departments(dept_id)
 );
 
 CREATE TABLE IF NOT EXISTS projects (
-    proj_id INT PRIMARY KEY,
-    proj_name VARCHAR(100),
-    budget DECIMAL(12,2),
-    dept_id INT,
-    FOREIGN KEY (dept_id) REFERENCES departments(dept_id)
+                                        proj_id INT PRIMARY KEY,
+                                        proj_name VARCHAR(100),
+                                        budget NUMERIC(14,2),
+                                        dept_id INT,
+                                        FOREIGN KEY (dept_id) REFERENCES departments(dept_id)
 );
 
--- Вставляю примеры данных
-INSERT INTO departments (dept_id, dept_name, location)
-VALUES 
-(101, 'IT', 'Building A'),
-(102, 'HR', 'Building B'),
-(103, 'Operations', 'Building C')
-ON CONFLICT DO NOTHING; -- чтобы не вставлять дубли при повторном запуске
+-- 2) Вставляем тестовые данные, но безопасно (ON CONFLICT DO NOTHING)
+INSERT INTO departments (dept_id, dept_name, location) VALUES
+                                                           (101, 'IT', 'Building A'),
+                                                           (102, 'HR', 'Building B'),
+                                                           (103, 'Operations', 'Building C')
+ON CONFLICT (dept_id) DO NOTHING;
 
-INSERT INTO employees (emp_id, emp_name, dept_id, salary)
-VALUES
-(1, 'John Smith', 101, 50000),
-(2, 'Jane Doe', 101, 55000),
-(3, 'Mike Johnson', 102, 48000),
-(4, 'Sarah Williams', 102, 52000),
-(5, 'Tom Brown', 103, 60000)
-ON CONFLICT DO NOTHING;
+INSERT INTO employees (emp_id, emp_name, dept_id, salary) VALUES
+                                                              (1, 'John Smith', 101, 50000),
+                                                              (2, 'Jane Doe', 101, 55000),
+                                                              (3, 'Mike Johnson', 102, 48000),
+                                                              (4, 'Sarah Williams', 102, 52000),
+                                                              (5, 'Tom Brown', 103, 60000)
+ON CONFLICT (emp_id) DO NOTHING;
 
-INSERT INTO projects (proj_id, proj_name, budget, dept_id)
-VALUES
-(201, 'Website Redesign', 75000, 101),
-(202, 'Database Migration', 120000, 101),
-(203, 'HR System Upgrade', 50000, 102)
-ON CONFLICT DO NOTHING;
+INSERT INTO projects (proj_id, proj_name, budget, dept_id) VALUES
+                                                               (201, 'Website Redesign', 75000, 101),
+                                                               (202, 'Database Migration', 120000, 101),
+                                                               (203, 'HR System Upgrade', 50000, 102)
+ON CONFLICT (proj_id) DO NOTHING;
 
-----------------------------------------
--- Part 2: Простые индексы
-----------------------------------------
--- Exercise 2.1: Создаю B-tree индекс на salary
--- Комментарий: добавляю индекс на зарплату, чтобы ускорить фильтрацию/сортировку по salary
-CREATE INDEX IF NOT EXISTS emp_salary_idx ON employees(salary);
-
--- Проверка: показать индексы на таблице employees
-SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'employees';
-
--- Exercise 2.2: Индекс на внешнем ключе dept_id
--- Комментарий: индекс на dept_id помогает JOIN'ам и запросам WHERE dept_id = ...
-CREATE INDEX IF NOT EXISTS emp_dept_idx ON employees(dept_id);
-
--- Пример запроса, который будет использовать индекс
-SELECT * FROM employees WHERE dept_id = 101;
-
--- Exercise 2.3: Посмотреть все индексы в публичной схеме
-SELECT tablename, indexname, indexdef
-FROM pg_indexes
-WHERE schemaname = 'public'
-ORDER BY tablename, indexname;
-
-----------------------------------------
--- Part 3: Многоколонные индексы
-----------------------------------------
--- Exercise 3.1: индекс на (dept_id, salary)
--- Комментарий: индекс для запросов, где сначала фильтр по dept_id, затем по salary
-CREATE INDEX IF NOT EXISTS emp_dept_salary_idx ON employees(dept_id, salary);
-
--- Тестовый запрос, который сможет использовать индекс
-SELECT emp_name, salary
-FROM employees
-WHERE dept_id = 101 AND salary > 52000;
-
--- Exercise 3.2: индекс с обратным порядком колонок
--- Комментарий: проверяю влияние порядка колонок в композитном индексе
-CREATE INDEX IF NOT EXISTS emp_salary_dept_idx ON employees(salary, dept_id);
-
--- Примеры запросов
-SELECT * FROM employees WHERE dept_id = 102 AND salary > 50000;
-SELECT * FROM employees WHERE salary > 50000 AND dept_id = 102;
-
-----------------------------------------
--- Part 4: Уникальные индексы
-----------------------------------------
--- Exercise 4.1: добавляем email и делаем уникальный индекс
+-- 3) Добавляем колонки, если ещё не добавлены
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS email VARCHAR(100);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS hire_date DATE;
 
--- Обновляю данные email (только если NULL)
+-- Заполняем email/phone/hire_date безопасно — только если NULL
 UPDATE employees SET email = 'john.smith@company.com' WHERE emp_id = 1 AND (email IS NULL OR email = '');
 UPDATE employees SET email = 'jane.doe@company.com' WHERE emp_id = 2 AND (email IS NULL OR email = '');
 UPDATE employees SET email = 'mike.johnson@company.com' WHERE emp_id = 3 AND (email IS NULL OR email = '');
 UPDATE employees SET email = 'sarah.williams@company.com' WHERE emp_id = 4 AND (email IS NULL OR email = '');
 UPDATE employees SET email = 'tom.brown@company.com' WHERE emp_id = 5 AND (email IS NULL OR email = '');
-
--- Создаю уникальный индекс на email
-CREATE UNIQUE INDEX IF NOT EXISTS emp_email_unique_idx ON employees(email);
-
--- Тест: вставка с дублирующим email -> ожидаю ошибку unique violation
--- (строку ниже можно раскомментировать чтобы протестировать)
--- INSERT INTO employees (emp_id, emp_name, dept_id, salary, email)
--- VALUES (6, 'New Employee', 101, 55000, 'john.smith@company.com');
-
--- Exercise 4.2: UNIQUE constraint на phone (Postgres создаст индекс автоматически)
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
-ALTER TABLE employees ADD CONSTRAINT IF NOT EXISTS employees_phone_unique UNIQUE (phone);
-
--- Посмотреть индексы, относящиеся к phone
-SELECT indexname, indexdef
-FROM pg_indexes
-WHERE tablename = 'employees' AND indexname ILIKE '%phone%';
-
-----------------------------------------
--- Part 5: Индексы и сортировка
-----------------------------------------
--- Exercise 5.1: Индекс, оптимизированный для ORDER BY salary DESC
-CREATE INDEX IF NOT EXISTS emp_salary_desc_idx ON employees(salary DESC);
-
--- Тест ORDER BY
-SELECT emp_name, salary FROM employees ORDER BY salary DESC;
-
--- Exercise 5.2: Индекс с NULLS FIRST на projects.budget
-CREATE INDEX IF NOT EXISTS proj_budget_nulls_first_idx ON projects(budget NULLS FIRST);
-
-SELECT proj_name, budget FROM projects ORDER BY budget NULLS FIRST;
-
-----------------------------------------
--- Part 6: Индексы на выражениях
-----------------------------------------
--- Exercise 6.1: индекс для нечувствительных к регистру поисков по имени
-CREATE INDEX IF NOT EXISTS emp_name_lower_idx ON employees(LOWER(emp_name));
-
--- Тест запроса
-SELECT * FROM employees WHERE LOWER(emp_name) = 'john smith';
-
--- Exercise 6.2: индекс на вычисляемом годе найма
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS hire_date DATE;
 
 UPDATE employees SET hire_date = '2020-01-15' WHERE emp_id = 1 AND hire_date IS NULL;
 UPDATE employees SET hire_date = '2019-06-20' WHERE emp_id = 2 AND hire_date IS NULL;
@@ -156,86 +65,125 @@ UPDATE employees SET hire_date = '2021-03-10' WHERE emp_id = 3 AND hire_date IS 
 UPDATE employees SET hire_date = '2020-11-05' WHERE emp_id = 4 AND hire_date IS NULL;
 UPDATE employees SET hire_date = '2018-08-25' WHERE emp_id = 5 AND hire_date IS NULL;
 
--- В Postgres нельзя прямо индексировать результат EXTRACT(...) как простую колонку,
--- но можно создать индекс на выражении. Создам индекс на (date_part('year', hire_date))
-CREATE INDEX IF NOT EXISTS emp_hire_year_idx ON employees ((EXTRACT(YEAR FROM hire_date)));
+-- 4) Part 2: Basic indexes (use IF NOT EXISTS)
+CREATE INDEX IF NOT EXISTS emp_salary_idx ON employees(salary);
+CREATE INDEX IF NOT EXISTS emp_dept_idx ON employees(dept_id);
 
--- Тест запроса
-SELECT emp_name, hire_date FROM employees WHERE EXTRACT(YEAR FROM hire_date) = 2020;
+-- 5) View index info example (just a helpful SELECT)
+-- SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'employees';
 
-----------------------------------------
--- Part 7: Управление индексами
-----------------------------------------
--- Exercise 7.1: Переименовать emp_salary_idx в employees_salary_index
--- Комментарий: иногда переименовываю, чтобы имя было понятнее
-ALTER INDEX IF EXISTS emp_salary_idx RENAME TO employees_salary_index;
+-- 6) Part 3: multicolumn indexes
+CREATE INDEX IF NOT EXISTS emp_dept_salary_idx ON employees(dept_id, salary);
+CREATE INDEX IF NOT EXISTS emp_salary_dept_idx ON employees(salary, dept_id);
 
--- Проверка
-SELECT indexname FROM pg_indexes WHERE tablename = 'employees';
+-- 7) Part 4: unique index on email
+-- Создаём уникальный индекс безопасно — IF NOT EXISTS поддерживается в PostgreSQL >= 9.5
+CREATE UNIQUE INDEX IF NOT EXISTS emp_email_unique_idx ON employees(email);
 
--- Exercise 7.2: Удалить ненужный индекс emp_salary_dept_idx
+-- Также добавим UNIQUE constraint на phone (сам PostgreSQL создаст индекс при добавлении CONSTRAINT)
+-- Добавим constraint только если его ещё нет
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'employees_phone_key'
+        ) THEN
+            ALTER TABLE employees ADD CONSTRAINT employees_phone_key UNIQUE (phone);
+        END IF;
+    EXCEPTION WHEN duplicate_object THEN
+        -- игнорируем
+        RAISE NOTICE 'Constraint employees_phone_key already exists or cannot be added';
+    END$$;
+
+-- 8) Part 5: index for sorting and NULL handling
+CREATE INDEX IF NOT EXISTS emp_salary_desc_idx ON employees (salary DESC);
+CREATE INDEX IF NOT EXISTS proj_budget_nulls_first_idx ON projects (budget NULLS FIRST);
+
+-- 9) Part 6: expression index (case-insensitive searches)
+CREATE INDEX IF NOT EXISTS emp_name_lower_idx ON employees (LOWER(emp_name));
+
+-- Index on extracted year: better to index expression cast to int
+-- NOTE: Using EXTRACT returns double precision; to be safe, cast to int
+CREATE INDEX IF NOT EXISTS emp_hire_year_idx ON employees ((EXTRACT(YEAR FROM hire_date)::int));
+
+-- 10) Part 7: rename index safely (переименование только если старый индекс существует и нового нет)
+DO $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'emp_salary_idx')
+            AND NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'employees_salary_index') THEN
+            EXECUTE 'ALTER INDEX emp_salary_idx RENAME TO employees_salary_index';
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Не удалось переименовать индекс (возможно уже переименован)';
+    END$$;
+
+-- 11) Drop redundant index if exists
 DROP INDEX IF EXISTS emp_salary_dept_idx;
 
--- Exercise 7.3: REINDEX существующего индекса
-REINDEX INDEX IF EXISTS employees_salary_index;
+-- 12) REINDEX — безопасно: проверим существование, затем попытаемся
+DO $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'employees_salary_index') THEN
+            BEGIN
+                EXECUTE 'REINDEX INDEX employees_salary_index';
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'REINDEX failed or not needed';
+            END;
+        END IF;
+    END$$;
 
-----------------------------------------
--- Part 8: Практические сценарии
-----------------------------------------
--- Exercise 8.1: Оптимизация частого запроса (WHERE salary > 50000 ORDER BY salary DESC)
--- Комментарий: создаю частичный индекс для salary > 50000, чтобы ускорить частые запросы по этому условию
+-- 13) Part 8: practical scenario indexes (partial index)
+-- Index for WHERE salary > 50000 (partial index)
 CREATE INDEX IF NOT EXISTS emp_salary_filter_idx ON employees(salary) WHERE salary > 50000;
--- Для JOIN по dept_id уже есть emp_dept_idx
 
--- Exercise 8.2: Частичный индекс для проектов с бюджетом > 80000
+-- Index for ORDER BY (we already created emp_salary_desc_idx)
+
+-- Partial index for projects with budget > 80000
 CREATE INDEX IF NOT EXISTS proj_high_budget_idx ON projects(budget) WHERE budget > 80000;
 
-SELECT proj_name, budget FROM projects WHERE budget > 80000;
+-- 14) Part 9: Hash index (only for equality)
+-- Hash index creation is allowed; if exists, skip
+DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'dept_name_hash_idx') THEN
+            EXECUTE 'CREATE INDEX dept_name_hash_idx ON departments USING HASH (dept_name)';
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Hash index creation skipped or failed';
+    END$$;
 
--- Exercise 8.3: Использовать EXPLAIN для проверки
-EXPLAIN SELECT * FROM employees WHERE salary > 52000;
-
-----------------------------------------
--- Part 9: Сравнение типов индексов
-----------------------------------------
--- Exercise 9.1: Создать HASH индекс для dept_name (пример)
-CREATE INDEX IF NOT EXISTS dept_name_hash_idx ON departments USING HASH (dept_name);
-
-SELECT * FROM departments WHERE dept_name = 'IT';
-
--- Exercise 9.2: Создать B-tree и Hash индексы на proj_name
+-- Also create btree and hash for proj_name safely
 CREATE INDEX IF NOT EXISTS proj_name_btree_idx ON projects(proj_name);
-CREATE INDEX IF NOT EXISTS proj_name_hash_idx ON projects USING HASH (proj_name);
+DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = 'proj_name_hash_idx') THEN
+            EXECUTE 'CREATE INDEX proj_name_hash_idx ON projects USING HASH (proj_name)';
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'proj_name_hash_idx creation skipped or failed';
+    END$$;
 
--- Тестовые запросы
-SELECT * FROM projects WHERE proj_name = 'Website Redesign';
-SELECT * FROM projects WHERE proj_name > 'Database';
+-- 15) Part 10: listing indexes with sizes (example select)
+-- SELECT schemaname, tablename, indexname, pg_size_pretty(pg_relation_size(indexname::regclass)) as index_size
+-- FROM pg_indexes WHERE schemaname = 'public' ORDER BY tablename, indexname;
 
-----------------------------------------
--- Part 10: Очистка и документация
-----------------------------------------
--- Exercise 10.1: Список индексов и их размеров
-SELECT 
-    schemaname,
-    tablename,
-    indexname,
-    pg_size_pretty(pg_relation_size(indexname::regclass)) AS index_size
-FROM pg_indexes
-WHERE schemaname = 'public'
-ORDER BY tablename, indexname;
+-- 16) Cleanup examples (dropping unnecessary indexes safely)
+DROP INDEX IF EXISTS proj_name_hash_idx;
 
--- Exercise 10.2: Удаление лишних индексов (пример)
-DROP INDEX IF EXISTS proj_name_hash_idx; -- удаляю hash-индекс, если он не нужен
-
--- Exercise 10.3: Создание VIEW с документированием индексов по зарплате
+-- 17) Create a documentation view (safe: drop and recreate to ensure definition)
 CREATE OR REPLACE VIEW index_documentation AS
-SELECT 
+SELECT
     tablename,
     indexname,
     indexdef,
-    'Improves salary-based queries' AS purpose
+    'Improves salary-based queries'::text as purpose
 FROM pg_indexes
-WHERE schemaname = 'public' 
-  AND indexname ILIKE '%salary%';
+WHERE schemaname = 'public'
+  AND indexname LIKE '%salary%';
 
-SELECT * FROM index_documentation;
+-- 18) Example EXPLAIN usage: пользователь может выполнить это вручную, например:
+-- EXPLAIN ANALYZE SELECT * FROM employees WHERE salary > 52000;
+
+-- 19) Доп.: демонстрационные запросы (безопасные SELECT для проверки)
+SELECT 'indexes_on_employees' AS info, indexname, indexdef FROM pg_indexes WHERE tablename = 'employees';
+SELECT 'top_employees' AS info, emp_name, salary FROM employees ORDER BY salary DESC LIMIT 5;
+SELECT proj_name, budget FROM projects WHERE budget > 80000;
